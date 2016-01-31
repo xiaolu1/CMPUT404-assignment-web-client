@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
-# Copyright 2013 Abram Hindle
+# Copyright 2016 Abram Hindle, https://github.com/tywtyw2002, and https://github.com/treedust
 # 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,26 +27,53 @@ import urllib
 def help():
     print "httpclient.py [GET/POST] [URL]\n"
 
-class HTTPRequest(object):
+class HTTPResponse(object):
     def __init__(self, code=200, body=""):
         self.code = code
         self.body = body
 
 class HTTPClient(object):
-    #def get_host_port(self,url):
 
+    def parseURL(self, url):
+        step1 = re.search('(https?)://(?P<netloc>[^/?#]+)(?P<path>.*)', url)
+        step2 = step1.group('netloc').split(':')
+        if len(step2) == 1:
+            port = 80
+        else:
+            port = int(step2[1])
+        
+        host = step2[0]
+        if (step1.group('path')):
+            path = step1.group('path')
+        else:
+            path = "/"
+            
+        return port, host, path
+    
     def connect(self, host, port):
         # use sockets!
-        return None
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect((host, port))
+        return s
 
     def get_code(self, data):
-        return None
+        code = int(data.split()[1])
+        return code
 
-    def get_headers(self,data):
-        return None
+    def get_headers(self, method, path, host, data):
+        header = method + " " + path + " HTTP/1.1 \r\nHost: " + host + "\r\n"
+        header += "Accept: text/html,text/plain,text/css \r\n"
+        header += "Connection: close "
+        if (method =="POST"):
+            header += "Content-Type: application/x-www-form-urlencoded\r\n"
+            header += "Content-Length: " + str(len(data))
+        header += "\r\n\r\n"
+        header += data
+        return header
 
     def get_body(self, data):
-        return None
+        body = data.split('\r\n\r\n')[1]
+        return body
 
     # read everything from the socket
     def recvall(self, sock):
@@ -60,15 +87,26 @@ class HTTPClient(object):
                 done = not part
         return str(buffer)
 
+    def send(self, method, url, data = ""):
+        port, host, path = self.parseURL(url)
+        
+        socket = self.connect(host, port)
+        request = self.get_headers(method, path, host, data)
+        socket.sendall(request)
+        response = self.recvall(socket)
+
+        code = self.get_code(response)
+        body = self.get_body(response)
+        return HTTPResponse(code, body)
+
     def GET(self, url, args=None):
-        code = 500
-        body = ""
-        return HTTPRequest(code, body)
+        return self.send("GET", url)
 
     def POST(self, url, args=None):
-        code = 500
-        body = ""
-        return HTTPRequest(code, body)
+        data = ""
+        if (args != None):
+            data = urllib.urlencode(args)
+        return self.send("POST", url, data)
 
     def command(self, url, command="GET", args=None):
         if (command == "POST"):
@@ -83,6 +121,6 @@ if __name__ == "__main__":
         help()
         sys.exit(1)
     elif (len(sys.argv) == 3):
-        print client.command( sys.argv[1], sys.argv[2] )
+        print client.command( sys.argv[2], sys.argv[1] )
     else:
-        print client.command( command, sys.argv[1] )    
+        print client.command( sys.argv[1] )
